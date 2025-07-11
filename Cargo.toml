@@ -77,7 +77,8 @@ tfhe-versionable = "=0.5.0"
 # we need getrandom to have the js feature so that it can target wasm
 # this is an indirect dependency
 getrandom = { version = "=0.2.15", features = ["js"] }
-
+dyn-stack = "=0.11.0"
+discrete-gaussian = "0.0.6"
 [build-dependencies]
 tonic-build = "=0.12.3"
 
@@ -93,6 +94,7 @@ test-log = { version = "=0.2.16", features = ["trace"] }
 tracing-test = "=0.2.5"
 webpki = { version = "=0.22.4", features = ["std"] }
 rustls = { version = "=0.23.18", default-features = false, features = ["std"] }
+dyn-stack = "=0.11.0"
 
 [lib]
 crate-type = ["lib", "cdylib"]

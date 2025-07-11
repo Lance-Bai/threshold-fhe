@@ -51,10 +51,13 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         curl \
     && rm -rf /var/lib/apt/lists/*
 
+# 设置 Go 国内代理
+ENV GOPROXY=https://goproxy.cn,direct
+
 # Install Go and grpc-health-probe
 ARG TARGETOS
 ARG TARGETARCH
-ARG GO_VERSION=1.21.6
+ARG GO_VERSION=1.23.1
 RUN curl -o go.tgz -L "https://go.dev/dl/go${GO_VERSION}.${TARGETOS}-${TARGETARCH}.tar.gz" && \
     tar -C /usr/local -xzf go.tgz && \
     rm go.tgz
@@ -65,7 +68,9 @@ ENV PATH="/usr/local/go/bin:/root/go/bin:$PATH"
 ARG GRPC_HEALTH_PROBE_VERSION=v0.4.35
 RUN --mount=type=cache,target=/root/go/pkg \
     go install github.com/grpc-ecosystem/grpc-health-probe@${GRPC_HEALTH_PROBE_VERSION}
-
+# RUN --mount=type=cache,target=/root/go/pkg \
+#     go install github.com/grpc-ecosystem/grpc-health-probe@latest
+    
 # Final runtime stage
 FROM debian:stable-slim
 

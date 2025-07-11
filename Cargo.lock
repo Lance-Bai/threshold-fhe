@@ -659,6 +659,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b63caa9aa9397e2d9480a9b13673856c78d8ac123288526c37d7839f2a86990"
 
 [[package]]
+name = "colored"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "117725a109d387c937a1533ce01b450cbde6b88abceea8473c4d7a85853cda3c"
+dependencies = [
+ "lazy_static",
+ "windows-sys 0.59.0",
+]
+
+[[package]]
 name = "combine"
 version = "4.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -965,6 +975,16 @@ checksum = "9ed9a281f7bc9b7576e61468ba615a66a5c8cfdff42420a70aa82701a3b1e292"
 dependencies = [
  "block-buffer",
  "crypto-common",
+]
+
+[[package]]
+name = "discrete-gaussian"
+version = "0.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c97bb31f90c7d2a7801c2b0e9f942f94b53663af85f3ae21eb82f590b06fc9b"
+dependencies = [
+ "rand",
+ "scalarff",
 ]
 
 [[package]]
@@ -3016,6 +3036,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "scalarff"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3faf445015761038e00520fff93645c478b173c9ad70dfac01bd97640f49d150"
+dependencies = [
+ "anyhow",
+ "colored",
+ "num-bigint",
+ "num-integer",
+]
+
+[[package]]
 name = "scc"
 version = "2.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3525,6 +3557,8 @@ dependencies = [
  "ctor",
  "dashmap",
  "derive_more",
+ "discrete-gaussian",
+ "dyn-stack",
  "futures",
  "g2p",
  "getrandom 0.2.15",

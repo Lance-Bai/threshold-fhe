@@ -1,7 +1,7 @@
 use aligned_vec::ABox;
 use core::fmt;
 use core::fmt::Debug;
-use num_traits::AsPrimitive;
+use num_traits::{AsPrimitive, ConstZero, Zero};
 #[cfg(not(feature = "sequential_sns"))]
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
@@ -10,7 +10,7 @@ use tfhe::{
     core_crypto::{
         algorithms::{
             allocate_and_trivially_encrypt_new_glwe_ciphertext,
-            lwe_ciphertext_cleartext_mul_assign, programmable_bootstrap_f128_lwe_ciphertext,
+            lwe_ciphertext_cleartext_mul_assign,
         },
         commons::{
             ciphertext_modulus::CiphertextModulus,
@@ -20,7 +20,7 @@ use tfhe::{
         entities::{
             Cleartext, Fourier128LweBootstrapKey, GlweCiphertextOwned, LweCiphertext, PlaintextList,
         },
-        prelude::{keyswitch_lwe_ciphertext, LweKeyswitchKey},
+        prelude::{keyswitch_lwe_ciphertext, programmable_bootstrap_f128_lwe_ciphertext, LweKeyswitchKey},
     },
     integer::{parameters::PolynomialSize, IntegerCiphertext},
     named::Named,
@@ -31,8 +31,8 @@ use tfhe_versionable::VersionsDispatch;
 use tracing::instrument;
 
 use crate::{
-    algebra::{base_ring::Z128, structure_traits::Zero},
-    error::error_handler::anyhow_error_and_log,
+    algebra::{base_ring::Z128},
+    error::error_handler::anyhow_error_and_log, execution::saniti::pbs::santi_programmable_bootstrap_f128_lwe_ciphertext,
 };
 
 use super::parameters::{

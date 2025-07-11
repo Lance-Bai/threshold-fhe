@@ -51,6 +51,7 @@ fn main() {
 
     // Encrypt a message and extract the raw ciphertexts.
     let message = rng.gen::<u8>();
+    
     let ct: FheUint8 = expanded_encrypt(&keyset.public_keys.public_key, message, 8).unwrap();
     let (raw_ct, _id, _tag) = ct.into_raw_parts();
 
@@ -66,10 +67,12 @@ fn main() {
     runtime.conversion_keys = Some(keyset_ck.clone());
     runtime.setup_sks(key_shares);
 
+
     // Perform distributed decryption.
     let result = threshold_decrypt64(&runtime, &raw_ct, DecryptionMode::NoiseFloodSmall).unwrap();
 
     for (_, v) in result {
         assert_eq!(v.0 as u8, message);
     }
+    println!("Done")
 }

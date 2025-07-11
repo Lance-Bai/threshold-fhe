@@ -99,6 +99,11 @@ pub mod tfhe_internals {
     pub mod utils;
 }
 
+pub mod saniti {
+    pub mod pbs;
+    mod decomposition;
+}
+
 pub mod config;
 
 #[cfg(feature = "non-wasm")]

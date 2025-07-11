@@ -624,7 +624,6 @@ where
     let _guard = rt.enter();
 
     let mut set = JoinSet::new();
-
     // Do the Switch&Squash for testing only once instead of having all test parties run it.
     let large_ct = match mode {
         DecryptionMode::NoiseFloodSmall | DecryptionMode::NoiseFloodLarge => {
