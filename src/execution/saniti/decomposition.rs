@@ -13,7 +13,7 @@ use tfhe_csprng::generators::SoftwareRandomGenerator;
 
 // copied from src/commons/math/decomposition/*.rs
 // in order to avoid allocations
-const NOISE_STD_DEV: f64 = 4.5; // Example value
+const NOISE_STD_DEV: f64 = 7.51e-15; // (2^31.08)÷(2^64)÷(2^14)
 
 pub struct TensorSignedDecompositionLendingIter<'buffers, Scalar: UnsignedInteger> {
     // The base log of the decomposition
@@ -105,11 +105,16 @@ fn decompose_one_level<S: UnsignedInteger>(base_log: usize, state: &mut S, mod_b
         mean: 0.0,
         std: NOISE_STD_DEV,
     });
-    let gaussian_noise = random.cast_into();
-    // The final term is the signed digit with the added noise.
-    let res2 = res1.wrapping_add(gaussian_noise);
+    let gaussian_noise: S = random.cast_into();
+    // JUST FOR TEST
+    // let gaussian_noise = S::ZERO;
 
-    *state -= res2;
+
+    let res2 = gaussian_noise
+        .wrapping_mul(S::ONE << base_log)
+        .wrapping_add(res1);
+
+    *state = state.wrapping_sub(res2);
     *state >>= base_log;
 
     res2

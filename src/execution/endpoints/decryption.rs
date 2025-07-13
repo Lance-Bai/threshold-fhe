@@ -22,6 +22,8 @@ pub enum DecryptionMode {
     BitDecSmall,
     /// nLarge Bit Decomposition
     BitDecLarge,
+    /// saniti
+    Saniti
 }
 
 impl DecryptionMode {
@@ -31,6 +33,7 @@ impl DecryptionMode {
             DecryptionMode::NoiseFloodLarge => "NoiseFloodLarge",
             DecryptionMode::BitDecSmall => "BitDecSmall",
             DecryptionMode::BitDecLarge => "BitDecLarge",
+            DecryptionMode::Saniti => "Saniti",
         }
     }
 }

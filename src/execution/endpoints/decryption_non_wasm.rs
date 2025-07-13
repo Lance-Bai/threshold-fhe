@@ -4,10 +4,13 @@ use crate::algebra::structure_traits::Ring;
 use crate::algebra::structure_traits::RingEmbed;
 use crate::algebra::structure_traits::{ErrorCorrect, Invert, Solve};
 use crate::execution::config::BatchParams;
+use crate::execution::endpoints::reconstruct::combine_decryptions_64;
+use crate::execution::endpoints::reconstruct::reconstruct_message_64;
 use crate::execution::large_execution::offline::LargePreprocessing;
 use crate::execution::online::preprocessing::create_memory_factory;
 use crate::execution::online::preprocessing::BitDecPreprocessing;
 use crate::execution::online::preprocessing::NoiseFloodPreprocessing;
+use crate::execution::online::preprocessing::SantitiPreprocessing;
 use crate::execution::runtime::party::Identity;
 #[cfg(any(test, feature = "testing"))]
 use crate::execution::runtime::session::BaseSessionStruct;
@@ -62,6 +65,7 @@ use std::num::Wrapping;
 use std::sync::Arc;
 use tfhe::core_crypto::prelude::{keyswitch_lwe_ciphertext, LweCiphertext, LweKeyswitchKey};
 use tfhe::integer::IntegerCiphertext;
+use tfhe::prelude::CastInto;
 use tfhe::shortint::Ciphertext;
 use tfhe::shortint::PBSOrder;
 #[cfg(any(test, feature = "testing"))]
@@ -499,6 +503,35 @@ where
     Ok(res)
 }
 
+#[derive(Default)]
+pub struct BlocksPartialDecrypt64 {
+    pub bits_in_block: u32,
+    pub partial_decryptions: Vec<Z64>,
+}
+/// Takes as input plaintexts blocks m1, ..., mN revealed to all parties
+/// which we call partial decryptions each of B bits
+/// and uses tfhe block recomposer to get back the u64 plaintext.
+pub fn combine_plaintext_blocks_64<T>(
+    shared_partial_decrypt: BlocksPartialDecrypt64,
+) -> anyhow::Result<T>
+where
+    T: tfhe::integer::block_decomposition::Recomposable
+        + tfhe::core_crypto::commons::traits::CastFrom<u64>,
+{
+    let res = match combine_decryptions_64::<T>(
+        shared_partial_decrypt.bits_in_block,
+        shared_partial_decrypt.partial_decryptions,
+    ) {
+        Ok(res) => res,
+        Err(error) => {
+            return Err(anyhow_error_and_log(format!(
+                "Panicked in combining {error}"
+            )));
+        }
+    };
+    Ok(res)
+}
+
 #[cfg(any(test, feature = "testing"))]
 async fn setup_small_session<Z>(
     mut base_session: BaseSessionStruct<AesRng, SessionParameters>,
@@ -613,6 +646,7 @@ pub fn threshold_decrypt64<Z: Ring, const EXTENSION_DEGREE: usize>(
     runtime: &DistributedTestRuntime<Z, EXTENSION_DEGREE>,
     ct: &Ciphertext64,
     mode: DecryptionMode,
+    out_ksk: &LweKeyswitchKey<Vec<u64>>,
 ) -> anyhow::Result<HashMap<Identity, Z64>>
 where
     ResiduePoly<Z128, EXTENSION_DEGREE>: ErrorCorrect + Invert + Solve + Derive,
@@ -627,10 +661,8 @@ where
     // Do the Switch&Squash for testing only once instead of having all test parties run it.
     let large_ct = match mode {
         DecryptionMode::NoiseFloodSmall | DecryptionMode::NoiseFloodLarge => {
-            tracing::info!("Switch&Squash started...");
             let keyset_ck = runtime.get_conversion_key();
             let large_ct = keyset_ck.to_large_ciphertext(ct)?;
-            tracing::info!("Switch&Squash done.");
             Some(large_ct)
         }
         _ => None,
@@ -665,6 +697,30 @@ where
             BaseSessionStruct::new(session_params, net, AesRng::from_entropy()).unwrap();
 
         match mode {
+            DecryptionMode::Saniti => {
+                let ks_key = out_ksk.clone();
+                set.spawn(async move {
+                    let mut session =
+                        setup_small_session::<ResiduePoly<Z128, EXTENSION_DEGREE>>(base_session)
+                            .await;
+
+                    let mut noiseflood_preprocessing = Small::new(session.clone())
+                        .init_prep_noiseflooding(ct.blocks().len())
+                        .await
+                        .unwrap();
+
+                    let out = run_decryption_santiti_64(
+                        &mut session,
+                        noiseflood_preprocessing.as_mut(),
+                        &party_keyshare,
+                        &ks_key,
+                        ct,
+                    )
+                    .await
+                    .unwrap();
+                    (identity, out)
+                });
+            }
             DecryptionMode::NoiseFloodSmall => {
                 let large_ct = large_ct.unwrap();
                 set.spawn(async move {
@@ -763,6 +819,22 @@ where
     Ok(results)
 }
 
+async fn open_masked_ptxts_64<
+    const EXTENSION_DEGREE: usize,
+    R: Rng + CryptoRng,
+    S: BaseSessionHandles<R>,
+>(
+    session: &S,
+    res: Vec<ResiduePoly<Z64, EXTENSION_DEGREE>>,
+    keyshares: &PrivateKeySet<EXTENSION_DEGREE>,
+) -> anyhow::Result<Vec<Z64>>
+where
+    ResiduePoly<Z64, EXTENSION_DEGREE>: ErrorCorrect,
+{
+    let openeds = robust_opens_to_all(session, &res, session.threshold() as usize).await?;
+    reconstruct_message_64(openeds, &keyshares.parameters)
+}
+
 async fn open_masked_ptxts<
     const EXTENSION_DEGREE: usize,
     R: Rng + CryptoRng,
@@ -807,6 +879,79 @@ where
         }
     };
     Ok(out)
+}
+
+#[instrument(
+    name = "TFHE.Threshold-Dec-1",
+    skip(session, preprocessing, keyshares, ciphertext)
+    fields(sid=?session.session_id())
+)]
+pub async fn run_decryption_santiti<
+    const EXTENSION_DEGREE: usize,
+    R: Rng + CryptoRng,
+    S: BaseSessionHandles<R>,
+    P: NoiseFloodPreprocessing<EXTENSION_DEGREE> + ?Sized,
+    T,
+>(
+    session: &mut S,
+    preprocessing: &mut P,
+    keyshares: &PrivateKeySet<EXTENSION_DEGREE>,
+    ksk: &LweKeyswitchKey<Vec<u64>>,
+    ciphertext: Ciphertext64,
+) -> anyhow::Result<T>
+where
+    T: tfhe::integer::block_decomposition::Recomposable
+        + tfhe::core_crypto::commons::traits::CastFrom<u64>,
+    ResiduePoly<Z64, EXTENSION_DEGREE>: ErrorCorrect,
+    ResiduePoly<Z128, EXTENSION_DEGREE>: ErrorCorrect,
+{
+    let mut shared_masked_ptxts = Vec::with_capacity(ciphertext.blocks().len());
+    let mut ciphertext = ciphertext.clone();
+    for current_ct_block in ciphertext.blocks_mut() {
+        let partial_decrypt = partial_decrypt64_clean(keyshares, &ksk, &current_ct_block)?;
+        let bath: ResiduePoly<Wrapping<u128>, EXTENSION_DEGREE> = preprocessing.next_mask()?;
+        let bath_part = bath.to_residuepoly64();
+        let res = partial_decrypt + bath_part;
+        // let res = partial_decrypt;
+
+        shared_masked_ptxts.push(res);
+    }
+    let partial_decrypted = open_masked_ptxts_64(session, shared_masked_ptxts, keyshares).await?;
+    let usable_message_bits = keyshares.parameters.message_modulus_log() as usize;
+    let shared_partial_decrypt = BlocksPartialDecrypt64 {
+        bits_in_block: usable_message_bits as u32,
+        partial_decryptions: partial_decrypted,
+    };
+    combine_plaintext_blocks_64(shared_partial_decrypt)
+}
+
+
+pub async fn run_decryption_santiti_64<
+    const EXTENSION_DEGREE: usize,
+    // const EXTENSION_DEGREE2: usize,
+    R: Rng + CryptoRng,
+    S: BaseSessionHandles<R>,
+    P: NoiseFloodPreprocessing<EXTENSION_DEGREE> + ?Sized,
+>(
+    session: &mut S,
+    preprocessing: &mut P,
+    keyshares: &PrivateKeySet<EXTENSION_DEGREE>,
+    ksk: &LweKeyswitchKey<Vec<u64>>,
+    ciphertext: Ciphertext64,
+) -> anyhow::Result<Z64>
+where
+    ResiduePoly<Z64, EXTENSION_DEGREE>: ErrorCorrect,
+    ResiduePoly<Z128, EXTENSION_DEGREE>: ErrorCorrect,
+{
+    let res = run_decryption_santiti::<EXTENSION_DEGREE, _, _, _, u64>(
+        session,
+        preprocessing,
+        keyshares,
+        ksk,
+        ciphertext,
+    )
+    .await?;
+    Ok(Wrapping(res))
 }
 
 #[instrument(
@@ -1063,6 +1208,39 @@ where
     );
     // b-<a, s>
     let res = ResiduePoly::<Z128, EXTENSION_DEGREE>::from_scalar(Wrapping(*body.data)) - a_time_s;
+    Ok(res)
+}
+
+pub fn partial_decrypt64_clean<const EXTENSION_DEGREE: usize>(
+    sk_share: &PrivateKeySet<EXTENSION_DEGREE>,
+    ksk: &LweKeyswitchKey<Vec<u64>>,
+    ct_block: &Ciphertext64Block,
+) -> anyhow::Result<ResiduePoly<Z64, EXTENSION_DEGREE>>
+where
+    ResiduePoly<Z64, EXTENSION_DEGREE>: Ring,
+{
+    let mut output_ctxt;
+
+    //If ctype = F-GLWE we need to KS before doing the decryption
+    let (mask, body) = if ct_block.pbs_order == PBSOrder::KeyswitchBootstrap {
+        output_ctxt = LweCiphertext::new(0, ksk.output_lwe_size(), ksk.ciphertext_modulus());
+        keyswitch_lwe_ciphertext(ksk, &ct_block.ct, &mut output_ctxt);
+        output_ctxt.get_mask_and_body()
+    } else {
+        ct_block.ct.get_mask_and_body()
+    };
+
+    let key_share64 = sk_share
+        .lwe_compute_secret_key_share
+        .data_as_raw_vec()
+        .clone();
+    let a_time_s =
+        (0..key_share64.len()).fold(ResiduePoly::<Z64, EXTENSION_DEGREE>::ZERO, |acc, column| {
+            acc + key_share64[column]
+                * ResiduePoly::<Z64, EXTENSION_DEGREE>::from_scalar(Wrapping(mask.as_ref()[column]))
+        });
+    // b-<a, s>
+    let res = ResiduePoly::<Z64, EXTENSION_DEGREE>::from_scalar(Wrapping(*body.data)) - a_time_s;
     Ok(res)
 }
 

@@ -168,6 +168,42 @@ where
     ) -> anyhow::Result<()>;
 }
 
+#[async_trait]
+pub trait SantitiPreprocessing<const EXTENSION_DEGREE: usize>: Send + Sync
+where
+    ResiduePoly<Z64, EXTENSION_DEGREE>: Ring,
+{
+    fn append_masks(&mut self, masks: Vec<ResiduePoly<Z64, EXTENSION_DEGREE>>);
+    fn next_mask(&mut self) -> anyhow::Result<ResiduePoly<Z64, EXTENSION_DEGREE>>;
+    fn next_mask_vec(
+        &mut self,
+        amount: usize,
+    ) -> anyhow::Result<Vec<ResiduePoly<Z64, EXTENSION_DEGREE>>>;
+
+    /// Fill the masks directly from the [`crate::execution::small_execution::prss::PRSSState`] available from [`SmallSession`]
+    fn fill_from_small_session(
+        &mut self,
+        session: &mut SmallSession<ResiduePoly<Z64, EXTENSION_DEGREE>>,
+        amount: usize,
+    ) -> anyhow::Result<()>;
+
+    /// Fill the masks by first generating bits via triples and randomness provided by [`BasePreprocessing`]
+    async fn fill_from_base_preproc(
+        &mut self,
+        preprocessing: &mut dyn BasePreprocessing<ResiduePoly<Z64, EXTENSION_DEGREE>>,
+        session: &mut BaseSession,
+        num_ctxts: usize,
+    ) -> anyhow::Result<()>;
+
+    /// Fill the masks directly from available bits provided by [`BitPreprocessing`],
+    /// using [`crate::execution::online::secret_distributions::SecretDistributions`]
+    fn fill_from_bits_preproc(
+        &mut self,
+        bit_preproc: &mut dyn BitPreprocessing<ResiduePoly<Z64, EXTENSION_DEGREE>>,
+        num_ctxts: usize,
+    ) -> anyhow::Result<()>;
+}
+
 impl NoiseBounds {
     pub(crate) fn get_type(&self) -> CorrelatedRandomnessType {
         match self {
@@ -330,6 +366,9 @@ pub trait PreprocessorFactory<const EXTENSION_DEGREE: usize>: Sync + Send {
     fn create_dkg_preprocessing_with_sns(
         &mut self,
     ) -> Box<dyn DKGPreprocessing<ResiduePoly<Z128, EXTENSION_DEGREE>>>;
+    // fn create_stantiti_preprocessing(
+    //     &mut self,
+    // ) -> Box<dyn SantitiPreprocessing<EXTENSION_DEGREE>>;
 }
 
 /// Returns a default factory for the global preprocessor
