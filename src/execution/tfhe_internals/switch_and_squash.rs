@@ -1,7 +1,7 @@
 use aligned_vec::ABox;
 use core::fmt;
 use core::fmt::Debug;
-use num_traits::{AsPrimitive, ConstZero, Zero};
+use num_traits::{AsPrimitive, ConstZero};
 #[cfg(not(feature = "sequential_sns"))]
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
@@ -32,7 +32,7 @@ use tracing::instrument;
 
 use crate::{
     algebra::{base_ring::Z128},
-    error::error_handler::anyhow_error_and_log, execution::saniti::pbs::santi_programmable_bootstrap_f128_lwe_ciphertext,
+    error::error_handler::anyhow_error_and_log,
 };
 
 use super::parameters::{

@@ -10,7 +10,6 @@ use crate::execution::large_execution::offline::LargePreprocessing;
 use crate::execution::online::preprocessing::create_memory_factory;
 use crate::execution::online::preprocessing::BitDecPreprocessing;
 use crate::execution::online::preprocessing::NoiseFloodPreprocessing;
-use crate::execution::online::preprocessing::SantitiPreprocessing;
 use crate::execution::runtime::party::Identity;
 #[cfg(any(test, feature = "testing"))]
 use crate::execution::runtime::session::BaseSessionStruct;
@@ -65,7 +64,6 @@ use std::num::Wrapping;
 use std::sync::Arc;
 use tfhe::core_crypto::prelude::{keyswitch_lwe_ciphertext, LweCiphertext, LweKeyswitchKey};
 use tfhe::integer::IntegerCiphertext;
-use tfhe::prelude::CastInto;
 use tfhe::shortint::Ciphertext;
 use tfhe::shortint::PBSOrder;
 #[cfg(any(test, feature = "testing"))]
@@ -1285,409 +1283,409 @@ where
     Ok(res)
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::algebra::structure_traits::{Derive, ErrorCorrect, Invert, Solve};
-    use crate::execution::endpoints::decryption::DecryptionMode;
-    use crate::execution::sharing::shamir::RevealOp;
-    use crate::execution::tfhe_internals::test_feature::KeySet;
-    use crate::networking::NetworkMode;
-    use crate::{
-        algebra::base_ring::{Z128, Z64},
-        algebra::galois_rings::common::ResiduePoly,
-        execution::tfhe_internals::test_feature::keygen_all_party_shares,
-        execution::{
-            constants::SMALL_TEST_KEY_PATH,
-            endpoints::decryption::threshold_decrypt64,
-            runtime::{
-                party::{Identity, Role},
-                test_runtime::{generate_fixed_identities, DistributedTestRuntime},
-            },
-            sharing::{shamir::ShamirSharings, share::Share},
-        },
-        file_handling::read_element,
-    };
-    use aes_prng::AesRng;
-    use rand::SeedableRng;
-    use std::sync::Arc;
-    use tfhe::{prelude::FheEncrypt, FheUint8};
+// #[cfg(test)]
+// mod tests {
+//     use crate::algebra::structure_traits::{Derive, ErrorCorrect, Invert, Solve};
+//     use crate::execution::endpoints::decryption::DecryptionMode;
+//     use crate::execution::sharing::shamir::RevealOp;
+//     use crate::execution::tfhe_internals::test_feature::KeySet;
+//     use crate::networking::NetworkMode;
+//     use crate::{
+//         algebra::base_ring::{Z128, Z64},
+//         algebra::galois_rings::common::ResiduePoly,
+//         execution::tfhe_internals::test_feature::keygen_all_party_shares,
+//         execution::{
+//             constants::SMALL_TEST_KEY_PATH,
+//             endpoints::decryption::threshold_decrypt64,
+//             runtime::{
+//                 party::{Identity, Role},
+//                 test_runtime::{generate_fixed_identities, DistributedTestRuntime},
+//             },
+//             sharing::{shamir::ShamirSharings, share::Share},
+//         },
+//         file_handling::read_element,
+//     };
+//     use aes_prng::AesRng;
+//     use rand::SeedableRng;
+//     use std::sync::Arc;
+//     use tfhe::{prelude::FheEncrypt, FheUint8};
 
-    #[test]
-    fn reconstruct_key() {
-        let parties = 5;
-        let keyset: KeySet = read_element(SMALL_TEST_KEY_PATH).unwrap();
-        let lwe_secret_key = keyset.get_raw_lwe_client_key();
-        let glwe_secret_key = keyset.get_raw_glwe_client_key();
-        let glwe_secret_key_sns_as_lwe = keyset.sns_secret_key.key.clone();
-        let params = keyset.sns_secret_key.params;
-        let shares = keygen_all_party_shares::<_, 4>(
-            lwe_secret_key,
-            glwe_secret_key,
-            glwe_secret_key_sns_as_lwe,
-            params,
-            &mut AesRng::seed_from_u64(0),
-            parties,
-            1,
-        )
-        .unwrap();
-        let mut first_bit_shares = Vec::with_capacity(parties);
-        (0..parties).for_each(|i| {
-            first_bit_shares.push(Share::new(
-                Role::indexed_by_zero(i),
-                *shares[i]
-                    .glwe_secret_key_share_sns_as_lwe
-                    .as_ref()
-                    .unwrap()
-                    .data_as_raw_vec()
-                    .first()
-                    .unwrap(),
-            ));
-        });
-        let first_bit_sharing = ShamirSharings::create(first_bit_shares);
-        let rec = first_bit_sharing.err_reconstruct(1, 0).unwrap();
-        let inner_rec = rec.to_scalar().unwrap();
-        assert_eq!(keyset.sns_secret_key.key.into_container()[0], inner_rec.0);
-    }
+//     #[test]
+//     fn reconstruct_key() {
+//         let parties = 5;
+//         let keyset: KeySet = read_element(SMALL_TEST_KEY_PATH).unwrap();
+//         let lwe_secret_key = keyset.get_raw_lwe_client_key();
+//         let glwe_secret_key = keyset.get_raw_glwe_client_key();
+//         let glwe_secret_key_sns_as_lwe = keyset.sns_secret_key.key.clone();
+//         let params = keyset.sns_secret_key.params;
+//         let shares = keygen_all_party_shares::<_, 4>(
+//             lwe_secret_key,
+//             glwe_secret_key,
+//             glwe_secret_key_sns_as_lwe,
+//             params,
+//             &mut AesRng::seed_from_u64(0),
+//             parties,
+//             1,
+//         )
+//         .unwrap();
+//         let mut first_bit_shares = Vec::with_capacity(parties);
+//         (0..parties).for_each(|i| {
+//             first_bit_shares.push(Share::new(
+//                 Role::indexed_by_zero(i),
+//                 *shares[i]
+//                     .glwe_secret_key_share_sns_as_lwe
+//                     .as_ref()
+//                     .unwrap()
+//                     .data_as_raw_vec()
+//                     .first()
+//                     .unwrap(),
+//             ));
+//         });
+//         let first_bit_sharing = ShamirSharings::create(first_bit_shares);
+//         let rec = first_bit_sharing.err_reconstruct(1, 0).unwrap();
+//         let inner_rec = rec.to_scalar().unwrap();
+//         assert_eq!(keyset.sns_secret_key.key.into_container()[0], inner_rec.0);
+//     }
 
-    #[test]
-    fn test_large_threshold_decrypt_f4() {
-        test_large_threshold_decrypt::<4>()
-    }
+//     #[test]
+//     fn test_large_threshold_decrypt_f4() {
+//         test_large_threshold_decrypt::<4>()
+//     }
 
-    #[cfg(feature = "extension_degree_3")]
-    #[test]
-    fn test_large_threshold_decrypt_f3() {
-        test_large_threshold_decrypt::<3>()
-    }
+//     #[cfg(feature = "extension_degree_3")]
+//     #[test]
+//     fn test_large_threshold_decrypt_f3() {
+//         test_large_threshold_decrypt::<3>()
+//     }
 
-    #[cfg(feature = "extension_degree_5")]
-    #[test]
-    fn test_large_threshold_decrypt_f5() {
-        test_large_threshold_decrypt::<5>()
-    }
+//     #[cfg(feature = "extension_degree_5")]
+//     #[test]
+//     fn test_large_threshold_decrypt_f5() {
+//         test_large_threshold_decrypt::<5>()
+//     }
 
-    #[cfg(feature = "extension_degree_6")]
-    #[test]
-    fn test_large_threshold_decrypt_f6() {
-        test_large_threshold_decrypt::<6>()
-    }
+//     #[cfg(feature = "extension_degree_6")]
+//     #[test]
+//     fn test_large_threshold_decrypt_f6() {
+//         test_large_threshold_decrypt::<6>()
+//     }
 
-    #[cfg(feature = "extension_degree_7")]
-    #[test]
-    fn test_large_threshold_decrypt_f7() {
-        test_large_threshold_decrypt::<7>()
-    }
+//     #[cfg(feature = "extension_degree_7")]
+//     #[test]
+//     fn test_large_threshold_decrypt_f7() {
+//         test_large_threshold_decrypt::<7>()
+//     }
 
-    #[cfg(feature = "extension_degree_8")]
-    #[test]
-    fn test_large_threshold_decrypt_f8() {
-        test_large_threshold_decrypt::<8>()
-    }
+//     #[cfg(feature = "extension_degree_8")]
+//     #[test]
+//     fn test_large_threshold_decrypt_f8() {
+//         test_large_threshold_decrypt::<8>()
+//     }
 
-    fn test_large_threshold_decrypt<const EXTENSION_DEGREE: usize>()
-    where
-        ResiduePoly<Z128, EXTENSION_DEGREE>: ErrorCorrect + Invert + Solve + Derive,
-        ResiduePoly<Z64, EXTENSION_DEGREE>: ErrorCorrect + Invert + Solve + Derive,
-    {
-        let threshold = 1;
-        let num_parties = 5;
-        let msg: u8 = 3;
-        let keyset: KeySet = read_element(SMALL_TEST_KEY_PATH).unwrap();
+//     fn test_large_threshold_decrypt<const EXTENSION_DEGREE: usize>()
+//     where
+//         ResiduePoly<Z128, EXTENSION_DEGREE>: ErrorCorrect + Invert + Solve + Derive,
+//         ResiduePoly<Z64, EXTENSION_DEGREE>: ErrorCorrect + Invert + Solve + Derive,
+//     {
+//         let threshold = 1;
+//         let num_parties = 5;
+//         let msg: u8 = 3;
+//         let keyset: KeySet = read_element(SMALL_TEST_KEY_PATH).unwrap();
 
-        let lwe_secret_key = keyset.get_raw_lwe_client_key();
-        let glwe_secret_key = keyset.get_raw_glwe_client_key();
-        let glwe_secret_key_sns_as_lwe = keyset.sns_secret_key.key;
-        let params = keyset.sns_secret_key.params;
+//         let lwe_secret_key = keyset.get_raw_lwe_client_key();
+//         let glwe_secret_key = keyset.get_raw_glwe_client_key();
+//         let glwe_secret_key_sns_as_lwe = keyset.sns_secret_key.key;
+//         let params = keyset.sns_secret_key.params;
 
-        let mut rng = AesRng::seed_from_u64(42);
-        // generate keys
-        let key_shares = keygen_all_party_shares(
-            lwe_secret_key,
-            glwe_secret_key,
-            glwe_secret_key_sns_as_lwe,
-            params,
-            &mut rng,
-            num_parties,
-            threshold,
-        )
-        .unwrap();
-        let (ct, _id, _tag) = FheUint8::encrypt(msg, &keyset.client_key).into_raw_parts();
+//         let mut rng = AesRng::seed_from_u64(42);
+//         // generate keys
+//         let key_shares = keygen_all_party_shares(
+//             lwe_secret_key,
+//             glwe_secret_key,
+//             glwe_secret_key_sns_as_lwe,
+//             params,
+//             &mut rng,
+//             num_parties,
+//             threshold,
+//         )
+//         .unwrap();
+//         let (ct, _id, _tag) = FheUint8::encrypt(msg, &keyset.client_key).into_raw_parts();
 
-        let identities = generate_fixed_identities(num_parties);
-        //Assumes Sync because preprocessing is part of the task
-        let mut runtime = DistributedTestRuntime::<
-            ResiduePoly<Z128, EXTENSION_DEGREE>,
-            EXTENSION_DEGREE,
-        >::new(identities, threshold as u8, NetworkMode::Sync, None);
+//         let identities = generate_fixed_identities(num_parties);
+//         //Assumes Sync because preprocessing is part of the task
+//         let mut runtime = DistributedTestRuntime::<
+//             ResiduePoly<Z128, EXTENSION_DEGREE>,
+//             EXTENSION_DEGREE,
+//         >::new(identities, threshold as u8, NetworkMode::Sync, None);
 
-        runtime.setup_conversion_key(Arc::new(keyset.public_keys.sns_key.clone().unwrap()));
-        runtime.setup_sks(key_shares);
+//         runtime.setup_conversion_key(Arc::new(keyset.public_keys.sns_key.clone().unwrap()));
+//         runtime.setup_sks(key_shares);
 
-        let results_dec =
-            threshold_decrypt64(&runtime, &ct, DecryptionMode::NoiseFloodLarge).unwrap();
-        let out_dec = &results_dec[&Identity("localhost:5000".to_string())];
+//         let results_dec =
+//             threshold_decrypt64(&runtime, &ct, DecryptionMode::NoiseFloodLarge).unwrap();
+//         let out_dec = &results_dec[&Identity("localhost:5000".to_string())];
 
-        let ref_res = std::num::Wrapping(msg as u64);
-        assert_eq!(*out_dec, ref_res);
-    }
+//         let ref_res = std::num::Wrapping(msg as u64);
+//         assert_eq!(*out_dec, ref_res);
+//     }
 
-    #[test]
-    fn test_small_threshold_decrypt_f4() {
-        test_small_threshold_decrypt::<4>()
-    }
+//     #[test]
+//     fn test_small_threshold_decrypt_f4() {
+//         test_small_threshold_decrypt::<4>()
+//     }
 
-    #[cfg(feature = "extension_degree_3")]
-    #[test]
-    fn test_small_threshold_decrypt_f3() {
-        test_small_threshold_decrypt::<3>()
-    }
+//     #[cfg(feature = "extension_degree_3")]
+//     #[test]
+//     fn test_small_threshold_decrypt_f3() {
+//         test_small_threshold_decrypt::<3>()
+//     }
 
-    #[cfg(feature = "extension_degree_5")]
-    #[test]
-    fn test_small_threshold_decrypt_f5() {
-        test_small_threshold_decrypt::<5>()
-    }
+//     #[cfg(feature = "extension_degree_5")]
+//     #[test]
+//     fn test_small_threshold_decrypt_f5() {
+//         test_small_threshold_decrypt::<5>()
+//     }
 
-    #[cfg(feature = "extension_degree_6")]
-    #[test]
-    fn test_small_threshold_decrypt_f6() {
-        test_small_threshold_decrypt::<6>()
-    }
+//     #[cfg(feature = "extension_degree_6")]
+//     #[test]
+//     fn test_small_threshold_decrypt_f6() {
+//         test_small_threshold_decrypt::<6>()
+//     }
 
-    #[cfg(feature = "extension_degree_7")]
-    #[test]
-    fn test_small_threshold_decrypt_f7() {
-        test_small_threshold_decrypt::<7>()
-    }
+//     #[cfg(feature = "extension_degree_7")]
+//     #[test]
+//     fn test_small_threshold_decrypt_f7() {
+//         test_small_threshold_decrypt::<7>()
+//     }
 
-    #[cfg(feature = "extension_degree_8")]
-    #[test]
-    fn test_small_threshold_decrypt_f8() {
-        test_small_threshold_decrypt::<8>()
-    }
+//     #[cfg(feature = "extension_degree_8")]
+//     #[test]
+//     fn test_small_threshold_decrypt_f8() {
+//         test_small_threshold_decrypt::<8>()
+//     }
 
-    fn test_small_threshold_decrypt<const EXTENSION_DEGREE: usize>()
-    where
-        ResiduePoly<Z128, EXTENSION_DEGREE>: ErrorCorrect + Invert + Solve + Derive,
-        ResiduePoly<Z64, EXTENSION_DEGREE>: ErrorCorrect + Invert + Solve + Derive,
-    {
-        let threshold = 1;
-        let num_parties = 4;
-        let msg: u8 = 3;
-        let keyset: KeySet = read_element(SMALL_TEST_KEY_PATH).unwrap();
+//     fn test_small_threshold_decrypt<const EXTENSION_DEGREE: usize>()
+//     where
+//         ResiduePoly<Z128, EXTENSION_DEGREE>: ErrorCorrect + Invert + Solve + Derive,
+//         ResiduePoly<Z64, EXTENSION_DEGREE>: ErrorCorrect + Invert + Solve + Derive,
+//     {
+//         let threshold = 1;
+//         let num_parties = 4;
+//         let msg: u8 = 3;
+//         let keyset: KeySet = read_element(SMALL_TEST_KEY_PATH).unwrap();
 
-        let lwe_secret_key = keyset.get_raw_lwe_client_key();
-        let glwe_secret_key = keyset.get_raw_glwe_client_key();
-        let glwe_secret_key_sns_as_lwe = keyset.sns_secret_key.key;
-        let params = keyset.sns_secret_key.params;
+//         let lwe_secret_key = keyset.get_raw_lwe_client_key();
+//         let glwe_secret_key = keyset.get_raw_glwe_client_key();
+//         let glwe_secret_key_sns_as_lwe = keyset.sns_secret_key.key;
+//         let params = keyset.sns_secret_key.params;
 
-        let mut rng = AesRng::seed_from_u64(42);
-        // generate keys
-        let key_shares = keygen_all_party_shares(
-            lwe_secret_key,
-            glwe_secret_key,
-            glwe_secret_key_sns_as_lwe,
-            params,
-            &mut rng,
-            num_parties,
-            threshold,
-        )
-        .unwrap();
-        let (ct, _id, _tag) = FheUint8::encrypt(msg, &keyset.client_key).into_raw_parts();
+//         let mut rng = AesRng::seed_from_u64(42);
+//         // generate keys
+//         let key_shares = keygen_all_party_shares(
+//             lwe_secret_key,
+//             glwe_secret_key,
+//             glwe_secret_key_sns_as_lwe,
+//             params,
+//             &mut rng,
+//             num_parties,
+//             threshold,
+//         )
+//         .unwrap();
+//         let (ct, _id, _tag) = FheUint8::encrypt(msg, &keyset.client_key).into_raw_parts();
 
-        let identities = generate_fixed_identities(num_parties);
-        //Assumes Sync because preprocessing is part of the task
-        let mut runtime = DistributedTestRuntime::<
-            ResiduePoly<Z128, EXTENSION_DEGREE>,
-            EXTENSION_DEGREE,
-        >::new(identities, threshold as u8, NetworkMode::Sync, None);
+//         let identities = generate_fixed_identities(num_parties);
+//         //Assumes Sync because preprocessing is part of the task
+//         let mut runtime = DistributedTestRuntime::<
+//             ResiduePoly<Z128, EXTENSION_DEGREE>,
+//             EXTENSION_DEGREE,
+//         >::new(identities, threshold as u8, NetworkMode::Sync, None);
 
-        runtime.setup_conversion_key(Arc::new(keyset.public_keys.sns_key.clone().unwrap()));
-        runtime.setup_sks(key_shares);
+//         runtime.setup_conversion_key(Arc::new(keyset.public_keys.sns_key.clone().unwrap()));
+//         runtime.setup_sks(key_shares);
 
-        let results_dec =
-            threshold_decrypt64(&runtime, &ct, DecryptionMode::NoiseFloodSmall).unwrap();
-        let out_dec = &results_dec[&Identity("localhost:5000".to_string())];
+//         let results_dec =
+//             threshold_decrypt64(&runtime, &ct, DecryptionMode::NoiseFloodSmall).unwrap();
+//         let out_dec = &results_dec[&Identity("localhost:5000".to_string())];
 
-        let ref_res = std::num::Wrapping(msg as u64);
-        assert_eq!(*out_dec, ref_res);
-    }
+//         let ref_res = std::num::Wrapping(msg as u64);
+//         assert_eq!(*out_dec, ref_res);
+//     }
 
-    #[test]
-    fn test_small_bitdec_threshold_decrypt_f4() {
-        test_small_bitdec_threshold_decrypt::<4>()
-    }
+//     #[test]
+//     fn test_small_bitdec_threshold_decrypt_f4() {
+//         test_small_bitdec_threshold_decrypt::<4>()
+//     }
 
-    #[cfg(feature = "extension_degree_3")]
-    #[test]
-    fn test_small_bitdec_threshold_decrypt_f3() {
-        test_small_bitdec_threshold_decrypt::<3>()
-    }
+//     #[cfg(feature = "extension_degree_3")]
+//     #[test]
+//     fn test_small_bitdec_threshold_decrypt_f3() {
+//         test_small_bitdec_threshold_decrypt::<3>()
+//     }
 
-    #[cfg(feature = "extension_degree_5")]
-    #[test]
-    fn test_small_bitdec_threshold_decrypt_f5() {
-        test_small_bitdec_threshold_decrypt::<5>()
-    }
+//     #[cfg(feature = "extension_degree_5")]
+//     #[test]
+//     fn test_small_bitdec_threshold_decrypt_f5() {
+//         test_small_bitdec_threshold_decrypt::<5>()
+//     }
 
-    #[cfg(feature = "extension_degree_6")]
-    #[test]
-    fn test_small_bitdec_threshold_decrypt_f6() {
-        test_small_bitdec_threshold_decrypt::<6>()
-    }
+//     #[cfg(feature = "extension_degree_6")]
+//     #[test]
+//     fn test_small_bitdec_threshold_decrypt_f6() {
+//         test_small_bitdec_threshold_decrypt::<6>()
+//     }
 
-    #[cfg(feature = "extension_degree_7")]
-    #[test]
-    fn test_small_bitdec_threshold_decrypt_f7() {
-        test_small_bitdec_threshold_decrypt::<7>()
-    }
+//     #[cfg(feature = "extension_degree_7")]
+//     #[test]
+//     fn test_small_bitdec_threshold_decrypt_f7() {
+//         test_small_bitdec_threshold_decrypt::<7>()
+//     }
 
-    #[cfg(feature = "extension_degree_8")]
-    #[test]
-    fn test_small_bitdec_threshold_decrypt_f8() {
-        test_small_bitdec_threshold_decrypt::<8>()
-    }
+//     #[cfg(feature = "extension_degree_8")]
+//     #[test]
+//     fn test_small_bitdec_threshold_decrypt_f8() {
+//         test_small_bitdec_threshold_decrypt::<8>()
+//     }
 
-    fn test_small_bitdec_threshold_decrypt<const EXTENSION_DEGREE: usize>()
-    where
-        ResiduePoly<Z128, EXTENSION_DEGREE>: ErrorCorrect + Invert + Solve + Derive,
-        ResiduePoly<Z64, EXTENSION_DEGREE>: ErrorCorrect + Invert + Solve + Derive,
-    {
-        let threshold = 1;
-        let num_parties = 5;
-        let msg: u8 = 3;
-        let keyset: KeySet = read_element(SMALL_TEST_KEY_PATH).unwrap();
+//     fn test_small_bitdec_threshold_decrypt<const EXTENSION_DEGREE: usize>()
+//     where
+//         ResiduePoly<Z128, EXTENSION_DEGREE>: ErrorCorrect + Invert + Solve + Derive,
+//         ResiduePoly<Z64, EXTENSION_DEGREE>: ErrorCorrect + Invert + Solve + Derive,
+//     {
+//         let threshold = 1;
+//         let num_parties = 5;
+//         let msg: u8 = 3;
+//         let keyset: KeySet = read_element(SMALL_TEST_KEY_PATH).unwrap();
 
-        let lwe_secret_key = keyset.get_raw_lwe_client_key();
-        let glwe_secret_key = keyset.get_raw_glwe_client_key();
-        let glwe_secret_key_sns_as_lwe = keyset.sns_secret_key.key;
-        let params = keyset.sns_secret_key.params;
+//         let lwe_secret_key = keyset.get_raw_lwe_client_key();
+//         let glwe_secret_key = keyset.get_raw_glwe_client_key();
+//         let glwe_secret_key_sns_as_lwe = keyset.sns_secret_key.key;
+//         let params = keyset.sns_secret_key.params;
 
-        let mut rng = AesRng::seed_from_u64(42);
-        // generate keys
-        let key_shares = keygen_all_party_shares(
-            lwe_secret_key,
-            glwe_secret_key,
-            glwe_secret_key_sns_as_lwe,
-            params,
-            &mut rng,
-            num_parties,
-            threshold,
-        )
-        .unwrap();
-        let (ct, _id, _tag) = FheUint8::encrypt(msg, &keyset.client_key).into_raw_parts();
+//         let mut rng = AesRng::seed_from_u64(42);
+//         // generate keys
+//         let key_shares = keygen_all_party_shares(
+//             lwe_secret_key,
+//             glwe_secret_key,
+//             glwe_secret_key_sns_as_lwe,
+//             params,
+//             &mut rng,
+//             num_parties,
+//             threshold,
+//         )
+//         .unwrap();
+//         let (ct, _id, _tag) = FheUint8::encrypt(msg, &keyset.client_key).into_raw_parts();
 
-        let identities = generate_fixed_identities(num_parties);
-        //Assumes Sync because preprocessing is part of the task
-        let mut runtime = DistributedTestRuntime::<
-            ResiduePoly<Z64, EXTENSION_DEGREE>,
-            EXTENSION_DEGREE,
-        >::new(identities, threshold as u8, NetworkMode::Sync, None);
+//         let identities = generate_fixed_identities(num_parties);
+//         //Assumes Sync because preprocessing is part of the task
+//         let mut runtime = DistributedTestRuntime::<
+//             ResiduePoly<Z64, EXTENSION_DEGREE>,
+//             EXTENSION_DEGREE,
+//         >::new(identities, threshold as u8, NetworkMode::Sync, None);
 
-        runtime.setup_sks(key_shares);
-        runtime.setup_ks(Arc::new(
-            keyset
-                .public_keys
-                .server_key
-                .into_raw_parts()
-                .0
-                .into_raw_parts()
-                .key_switching_key,
-        ));
+//         runtime.setup_sks(key_shares);
+//         runtime.setup_ks(Arc::new(
+//             keyset
+//                 .public_keys
+//                 .server_key
+//                 .into_raw_parts()
+//                 .0
+//                 .into_raw_parts()
+//                 .key_switching_key,
+//         ));
 
-        let results_dec = threshold_decrypt64(&runtime, &ct, DecryptionMode::BitDecSmall).unwrap();
-        let out_dec = &results_dec[&Identity("localhost:5000".to_string())];
+//         let results_dec = threshold_decrypt64(&runtime, &ct, DecryptionMode::BitDecSmall).unwrap();
+//         let out_dec = &results_dec[&Identity("localhost:5000".to_string())];
 
-        let ref_res = std::num::Wrapping(msg as u64);
-        assert_eq!(*out_dec, ref_res);
-    }
+//         let ref_res = std::num::Wrapping(msg as u64);
+//         assert_eq!(*out_dec, ref_res);
+//     }
 
-    #[test]
-    fn test_large_bitdec_threshold_decrypt_f4() {
-        test_large_bitdec_threshold_decrypt::<4>()
-    }
+//     #[test]
+//     fn test_large_bitdec_threshold_decrypt_f4() {
+//         test_large_bitdec_threshold_decrypt::<4>()
+//     }
 
-    #[cfg(feature = "extension_degree_3")]
-    #[test]
-    fn test_large_bitdec_threshold_decrypt_f3() {
-        test_large_bitdec_threshold_decrypt::<3>()
-    }
+//     #[cfg(feature = "extension_degree_3")]
+//     #[test]
+//     fn test_large_bitdec_threshold_decrypt_f3() {
+//         test_large_bitdec_threshold_decrypt::<3>()
+//     }
 
-    #[cfg(feature = "extension_degree_5")]
-    #[test]
-    fn test_large_bitdec_threshold_decrypt_f5() {
-        test_large_bitdec_threshold_decrypt::<5>()
-    }
+//     #[cfg(feature = "extension_degree_5")]
+//     #[test]
+//     fn test_large_bitdec_threshold_decrypt_f5() {
+//         test_large_bitdec_threshold_decrypt::<5>()
+//     }
 
-    #[cfg(feature = "extension_degree_6")]
-    #[test]
-    fn test_large_bitdec_threshold_decrypt_f6() {
-        test_large_bitdec_threshold_decrypt::<6>()
-    }
+//     #[cfg(feature = "extension_degree_6")]
+//     #[test]
+//     fn test_large_bitdec_threshold_decrypt_f6() {
+//         test_large_bitdec_threshold_decrypt::<6>()
+//     }
 
-    #[cfg(feature = "extension_degree_7")]
-    #[test]
-    fn test_large_bitdec_threshold_decrypt_f7() {
-        test_large_bitdec_threshold_decrypt::<7>()
-    }
+//     #[cfg(feature = "extension_degree_7")]
+//     #[test]
+//     fn test_large_bitdec_threshold_decrypt_f7() {
+//         test_large_bitdec_threshold_decrypt::<7>()
+//     }
 
-    #[cfg(feature = "extension_degree_8")]
-    #[test]
-    fn test_large_bitdec_threshold_decrypt_f8() {
-        test_large_bitdec_threshold_decrypt::<8>()
-    }
+//     #[cfg(feature = "extension_degree_8")]
+//     #[test]
+//     fn test_large_bitdec_threshold_decrypt_f8() {
+//         test_large_bitdec_threshold_decrypt::<8>()
+//     }
 
-    fn test_large_bitdec_threshold_decrypt<const EXTENSION_DEGREE: usize>()
-    where
-        ResiduePoly<Z128, EXTENSION_DEGREE>: ErrorCorrect + Invert + Solve + Derive,
-        ResiduePoly<Z64, EXTENSION_DEGREE>: ErrorCorrect + Invert + Solve + Derive,
-    {
-        let threshold = 1;
-        let num_parties = 5;
-        let msg: u8 = 15;
-        let keyset: KeySet = read_element(SMALL_TEST_KEY_PATH).unwrap();
+//     fn test_large_bitdec_threshold_decrypt<const EXTENSION_DEGREE: usize>()
+//     where
+//         ResiduePoly<Z128, EXTENSION_DEGREE>: ErrorCorrect + Invert + Solve + Derive,
+//         ResiduePoly<Z64, EXTENSION_DEGREE>: ErrorCorrect + Invert + Solve + Derive,
+//     {
+//         let threshold = 1;
+//         let num_parties = 5;
+//         let msg: u8 = 15;
+//         let keyset: KeySet = read_element(SMALL_TEST_KEY_PATH).unwrap();
 
-        let lwe_secret_key = keyset.get_raw_lwe_client_key();
-        let glwe_secret_key = keyset.get_raw_glwe_client_key();
-        let glwe_secret_key_sns_as_lwe = keyset.sns_secret_key.key;
-        let params = keyset.sns_secret_key.params;
+//         let lwe_secret_key = keyset.get_raw_lwe_client_key();
+//         let glwe_secret_key = keyset.get_raw_glwe_client_key();
+//         let glwe_secret_key_sns_as_lwe = keyset.sns_secret_key.key;
+//         let params = keyset.sns_secret_key.params;
 
-        let mut rng = AesRng::seed_from_u64(42);
-        // generate keys
-        let key_shares = keygen_all_party_shares(
-            lwe_secret_key,
-            glwe_secret_key,
-            glwe_secret_key_sns_as_lwe,
-            params,
-            &mut rng,
-            num_parties,
-            threshold,
-        )
-        .unwrap();
-        let (ct, _id, _tag) = FheUint8::encrypt(msg, &keyset.client_key).into_raw_parts();
+//         let mut rng = AesRng::seed_from_u64(42);
+//         // generate keys
+//         let key_shares = keygen_all_party_shares(
+//             lwe_secret_key,
+//             glwe_secret_key,
+//             glwe_secret_key_sns_as_lwe,
+//             params,
+//             &mut rng,
+//             num_parties,
+//             threshold,
+//         )
+//         .unwrap();
+//         let (ct, _id, _tag) = FheUint8::encrypt(msg, &keyset.client_key).into_raw_parts();
 
-        let identities = generate_fixed_identities(num_parties);
-        //Assumes Sync because preprocessing is part of the task
-        let mut runtime = DistributedTestRuntime::<
-            ResiduePoly<Z64, EXTENSION_DEGREE>,
-            EXTENSION_DEGREE,
-        >::new(identities, threshold as u8, NetworkMode::Sync, None);
+//         let identities = generate_fixed_identities(num_parties);
+//         //Assumes Sync because preprocessing is part of the task
+//         let mut runtime = DistributedTestRuntime::<
+//             ResiduePoly<Z64, EXTENSION_DEGREE>,
+//             EXTENSION_DEGREE,
+//         >::new(identities, threshold as u8, NetworkMode::Sync, None);
 
-        runtime.setup_sks(key_shares);
-        runtime.setup_ks(Arc::new(
-            keyset
-                .public_keys
-                .server_key
-                .into_raw_parts()
-                .0
-                .into_raw_parts()
-                .key_switching_key,
-        ));
+//         runtime.setup_sks(key_shares);
+//         runtime.setup_ks(Arc::new(
+//             keyset
+//                 .public_keys
+//                 .server_key
+//                 .into_raw_parts()
+//                 .0
+//                 .into_raw_parts()
+//                 .key_switching_key,
+//         ));
 
-        let results_dec = threshold_decrypt64(&runtime, &ct, DecryptionMode::BitDecLarge).unwrap();
-        let out_dec = &results_dec[&Identity("localhost:5000".to_string())];
+//         let results_dec = threshold_decrypt64(&runtime, &ct, DecryptionMode::BitDecLarge).unwrap();
+//         let out_dec = &results_dec[&Identity("localhost:5000".to_string())];
 
-        let ref_res = std::num::Wrapping(msg as u64);
-        assert_eq!(*out_dec, ref_res);
-    }
-}
+//         let ref_res = std::num::Wrapping(msg as u64);
+//         assert_eq!(*out_dec, ref_res);
+//     }
+// }

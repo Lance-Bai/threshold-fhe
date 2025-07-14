@@ -11,23 +11,20 @@ use aes_prng::AesRng;
 use rand::{Rng, SeedableRng};
 use std::sync::Arc;
 use tfhe::{
-    boolean::prelude::{DecompositionBaseLog, DecompositionLevelCount, LweDimension, StandardDev},
+    boolean::prelude::{DecompositionBaseLog, DecompositionLevelCount, StandardDev},
     core_crypto::{
-        commons::noise_formulas::lwe_keyswitch,
         prelude::{
             allocate_and_generate_new_lwe_keyswitch_key,
-            convert_standard_lwe_bootstrap_key_to_fourier_128, decrypt_lwe_ciphertext,
-            generate_programmable_bootstrap_glwe_lut, keyswitch_lwe_ciphertext,
+            convert_standard_lwe_bootstrap_key_to_fourier_128, generate_programmable_bootstrap_glwe_lut, keyswitch_lwe_ciphertext,
             par_allocate_and_generate_new_seeded_lwe_bootstrap_key, EncryptionRandomGenerator,
             Fourier128LweBootstrapKey, Gaussian, GlweCiphertextOwned, LweBootstrapKeyOwned,
-            LweCiphertext, Plaintext, SignedDecomposer,
+            LweCiphertext,
         },
         seeders::new_seeder,
     },
-    integer::{IntegerCiphertext, IntegerRadixCiphertext},
-    prelude::FheDecrypt,
+    integer::IntegerCiphertext,
     set_server_key,
-    shortint::{CiphertextModulus, MessageModulus},
+    shortint::CiphertextModulus,
     FheUint8,
 };
 use tfhe_csprng::generators::DefaultRandomGenerator;
@@ -47,8 +44,8 @@ use threshold_fhe::{
 };
 
 fn main() {
-    let num_parties = 4;
-    let threshold = 1;
+    let num_parties = 8;
+    let threshold = 2;
     let mut rng = AesRng::from_entropy();
     let mut boxed_seeder = new_seeder();
     // Get a mutable reference to the seeder as a trait object from the Box returned by new_seeder
@@ -168,72 +165,35 @@ fn main() {
     );
     let mut ks_ct = LweCiphertext::new(0u64, lwe_dimension.to_lwe_size(), ciphertext_modulus);
 
-    let result: u64 = keyset
-        .client_key
-        .clone()
-        .into_raw_parts()
-        .0
-        .decrypt_radix(&raw_ct);
-    println!("result: {}\t message: {}", result, message);
+    for (i,e) in raw_ct.blocks_mut().iter_mut().enumerate() {
+        let lwe_ciphertext_in: LweCiphertext<Vec<u64>> = e.ct.clone();
+        
+        keyswitch_lwe_ciphertext(&ksk, &lwe_ciphertext_in, &mut ks_ct);
+        let accumulator: GlweCiphertextOwned<u64> = generate_programmable_bootstrap_glwe_lut(
+            polynomial_size,
+            glwe_dimension.to_glwe_size(),
+            message_modulus as usize,
+            ciphertext_modulus,
+            delta,
+            |x: u64| x,
+        );
 
-    // for e in raw_ct.blocks_mut() {
-    //     let mut lwe_ciphertext_in: LweCiphertext<Vec<u64>> = e.ct.clone();
-    //     ///////////////////////////////////////////////////////////////
-    //     // println!(
-    //     //     "lwe_ciphertext_in.lwe_size().0: {}",
-    //     //     lwe_ciphertext_in.lwe_size().0
-    //     // );
-    //     // let lwe_ciphertext_in_plaintext: Plaintext<u64> =
-    //     //     decrypt_lwe_ciphertext(&big_lwe_sk, &lwe_ciphertext_in);
+        println!("Computing Santiti PBS for block {i} ...");
+        santi_programmable_bootstrap_f128_lwe_ciphertext(
+            &ks_ct,
+            &mut pbs_multiplication_ct,
+            &accumulator,
+            &fourier_bsk,
+        );
 
-    //     // let signed_decomposer =
-    //     //     SignedDecomposer::new(DecompositionBaseLog(5), DecompositionLevelCount(1));
 
-    //     // let lwe_ciphertext_in_result: u64 =
-    //     //     signed_decomposer.closest_representable(lwe_ciphertext_in_plaintext.0) / delta;
-    //     // println!("lwe_ciphertext_in_result: {}", lwe_ciphertext_in_result);
-    //     ////////////////////////////////////////////////////////////////////////////////////
+        e.ct = pbs_multiplication_ct.clone();
+    }
 
-    //     keyswitch_lwe_ciphertext(&ksk, &lwe_ciphertext_in, &mut ks_ct);
-    //     let accumulator: GlweCiphertextOwned<u64> = generate_programmable_bootstrap_glwe_lut(
-    //         polynomial_size,
-    //         glwe_dimension.to_glwe_size(),
-    //         message_modulus as usize,
-    //         ciphertext_modulus,
-    //         delta,
-    //         |x: u64| x,
-    //     );
-
-    //     println!("Computing PBS...");
-    //     santi_programmable_bootstrap_f128_lwe_ciphertext(
-    //         &ks_ct,
-    //         &mut pbs_multiplication_ct,
-    //         &accumulator,
-    //         &fourier_bsk,
-    //     );
-
-    //     ////////////////////////////////////////////////////////////////////////////////////////
-    //     // let pbs_multiplication_plaintext: Plaintext<u64> =
-    //     //     decrypt_lwe_ciphertext(&big_lwe_sk, &pbs_multiplication_ct);
-
-    //     // let signed_decomposer =
-    //     //     SignedDecomposer::new(DecompositionBaseLog(5), DecompositionLevelCount(1));
-
-    //     // let pbs_multiplication_result: u64 =
-    //     //     signed_decomposer.closest_representable(pbs_multiplication_plaintext.0) / delta;
-    //     // println!("pbs_multiplication_result: {}", pbs_multiplication_result);
-
-    //     //////////////////////////////////////////////////////////////////////////////////////////
-
-    //     e.ct = pbs_multiplication_ct.clone();
-    // }
-    let result: u64 = keyset.client_key.into_raw_parts().0.decrypt_radix(&raw_ct);
-    println!("result: {}\t message: {}", result, message);
-    // Perform distributed decryption.
     let result = threshold_decrypt64(&runtime, &raw_ct, DecryptionMode::Saniti, &ksk).unwrap();
 
     for (i, v) in result {
-        println!("identity: {i}, result: {v}");
+        println!("identity: {i}, message: {message} -> result: {v}");
         // assert_eq!(v.0 as u8, message);
     }
     println!("Done")

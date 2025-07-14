@@ -14,7 +14,6 @@ use tfhe::{
                 polynomial_wrapping_monic_monomial_div_assign,
                 polynomial_wrapping_monic_monomial_mul_assign,
             },
-            programmable_bootstrap_f128_lwe_ciphertext,
             programmable_bootstrap_f128_lwe_ciphertext_mem_optimized_requirement,
             ComputationBuffers, Container, ContainerMut, ContiguousEntityContainer,
             ContiguousEntityContainerMut, Fft128, Fourier128GgswCiphertext,
