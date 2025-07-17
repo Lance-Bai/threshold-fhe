@@ -273,10 +273,12 @@ fn saniti_add_external_product_assign<Scalar, ContOut, ContGgsw, ContGlwe>(
         let ciphertext_modulus = glwe.ciphertext_modulus();
 
         // we round the input mask and body
-        let decomposer = SignedDecomposer::<Scalar>::new(
-            ggsw.decomposition_base_log(),
-            ggsw.decomposition_level_count(),
-        );
+        let base_log = ggsw.decomposition_base_log();
+        let level_count = ggsw.decomposition_level_count();
+        // let decomposer = SignedDecomposer::<Scalar>::new(
+        //     ggsw.decomposition_base_log(),
+        //     ggsw.decomposition_level_count(),
+        // );
 
         let (output_fft_buffer_re0, stack) =
             stack.make_aligned_raw::<f64>(fourier_poly_size * ggsw.glwe_size().0, align);
@@ -296,15 +298,20 @@ fn saniti_add_external_product_assign<Scalar, ContOut, ContGgsw, ContGlwe>(
             // ------------------------------------------------------ EXTERNAL PRODUCT IN FOURIER
             // DOMAIN In this section, we perform the external product in the fourier
             // domain, and accumulate the result in the output_fft_buffer variable.
+            // let (mut decomposition, substack1) = TensorSignedDecompositionLendingIter::new(
+            //     glwe.as_ref()
+            //         .iter()
+            //         .map(|s| decomposer.init_decomposer_state(*s)),
+            //     base_log,
+            //     level_count,
+            //     substack0,
+            // );
             let (mut decomposition, substack1) = TensorSignedDecompositionLendingIter::new(
-                glwe.as_ref()
-                    .iter()
-                    .map(|s| decomposer.init_decomposer_state(*s)),
-                decomposer.base_log(),
-                decomposer.level_count(),
+                glwe.as_ref().iter().map(|s| *s), //accurate decomposition, no need to init
+                base_log,
+                level_count,
                 substack0,
             );
-
             // We loop through the levels (we reverse to match the order of the decomposition
             // iterator.)
             for ggsw_decomp_matrix in ggsw.into_levels() {
@@ -416,6 +423,12 @@ fn collect_next_term<'a, Scalar: UnsignedTorus>(
 
 #[cfg(test)]
 mod test {
+    use std::ops::{Shl};
+
+    use super::*;
+    use crate::execution::saniti::decomposition::decompose_one_level;
+    use aes_prng::AesRng;
+    use rand::Rng;
     use tfhe::{
         boolean::prelude::{GlweDimension, LweDimension, PolynomialSize, StandardDev},
         core_crypto::{
@@ -432,23 +445,41 @@ mod test {
         shortint::CiphertextModulus,
     };
     use tfhe_csprng::generators::DefaultRandomGenerator;
+    #[test]
+    fn test_decomp() {
+        let base_log = DecompositionBaseLog(16);
+        let level_count = DecompositionLevelCount(4);
 
-    use super::*;
+        let mut rng = AesRng::from_random_seed();
+        let mut state = rng.gen_range(0..=u64::MAX);
+        let temp = 1_u64;
+        let mod_b_mask = temp.shl(base_log.0) - 1;
+        let mut buffer: u64 = 0;
+        for i in 0..level_count.0 {
+            println!("in state:  {:?} -> {:064b}", state.cast_signed(), state);
+            let dec = decompose_one_level(base_log.0, &mut state, mod_b_mask);
+            println!("out state: {:?} -> {:064b}", state.cast_signed(), state);
+            println!("decomp:    {:?} -> {:064b}\n", dec.cast_signed(), dec);
+            buffer = buffer.wrapping_add(dec.wrapping_mul(1_u64 << (base_log.0 * i)));
+        }
+        println!("buffer:    {:?} -> {:064b}", buffer.cast_signed(), buffer);
+    }
+
     #[test]
     fn test_saniti_programmable_bootstrap_f128_lwe_ciphertext() {
-        let small_lwe_dimension = LweDimension(742);
+        let small_lwe_dimension = LweDimension(918);
         let glwe_dimension = GlweDimension(1);
         let polynomial_size = PolynomialSize(2048);
         let lwe_noise_distribution = Gaussian::from_dispersion_parameter(
-            StandardDev(0.000007069849454709433 * 0.000007069849454709433),
+            StandardDev::from_standard_dev(2_f64.powf(-20.)),
             0.0,
         );
         let glwe_noise_distribution = Gaussian::from_dispersion_parameter(
-            StandardDev(0.00000000000000029403601535432533 * 0.00000000000000029403601535432533),
+            StandardDev::from_standard_dev(2_f64.powf(-48.)),
             0.0,
         );
-        let pbs_base_log = DecompositionBaseLog(23);
-        let pbs_level = DecompositionLevelCount(1);
+        let pbs_base_log = DecompositionBaseLog(32);
+        let pbs_level = DecompositionLevelCount(2);
         let ciphertext_modulus = CiphertextModulus::new_native();
 
         // Request the best seeder possible, starting with hardware entropy sources and falling back to
@@ -514,7 +545,7 @@ mod test {
         drop(std_bootstrapping_key);
 
         // Our 4 bits message space
-        let message_modulus = 1u64 << 2;
+        let message_modulus = 1u64 << 4;
 
         // Our input message
         let input_message = 2u64;

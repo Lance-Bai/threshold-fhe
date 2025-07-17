@@ -102,6 +102,7 @@ pub mod tfhe_internals {
 pub mod saniti {
     pub mod pbs;
     mod decomposition;
+    mod local_decomposer;
 }
 
 pub mod config;

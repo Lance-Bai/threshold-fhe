@@ -15,7 +15,8 @@ use tfhe::{
     core_crypto::{
         prelude::{
             allocate_and_generate_new_lwe_keyswitch_key,
-            convert_standard_lwe_bootstrap_key_to_fourier_128, generate_programmable_bootstrap_glwe_lut, keyswitch_lwe_ciphertext,
+            convert_standard_lwe_bootstrap_key_to_fourier_128,
+            generate_programmable_bootstrap_glwe_lut, keyswitch_lwe_ciphertext,
             par_allocate_and_generate_new_seeded_lwe_bootstrap_key, EncryptionRandomGenerator,
             Fourier128LweBootstrapKey, Gaussian, GlweCiphertextOwned, LweBootstrapKeyOwned,
             LweCiphertext,
@@ -44,8 +45,8 @@ use threshold_fhe::{
 };
 
 fn main() {
-    let num_parties = 8;
-    let threshold = 2;
+    let num_parties = 4;
+    let threshold = 1;
     let mut rng = AesRng::from_entropy();
     let mut boxed_seeder = new_seeder();
     // Get a mutable reference to the seeder as a trait object from the Box returned by new_seeder
@@ -55,18 +56,18 @@ fn main() {
     let keyset: KeySet = gen_key_set(BC_PARAMS_SAM_SNS, &mut rng);
     set_server_key(keyset.public_keys.server_key.clone());
 
-    let pbs_base_log = DecompositionBaseLog(15);
-    let pbs_level = DecompositionLevelCount(2);
-    let ks_base_log = DecompositionBaseLog(8);
-    let ks_level = DecompositionLevelCount(4);
+    let pbs_base_log = DecompositionBaseLog(16);
+    let pbs_level = DecompositionLevelCount(4);
+    let ks_base_log = DecompositionBaseLog(4);
+    let ks_level = DecompositionLevelCount(3);
 
     let ciphertext_modulus = CiphertextModulus::new_native();
     let glwe_noise_distribution = Gaussian::from_dispersion_parameter(
-        StandardDev(0.0000000000000000029403601535432533 * 0.00000000000000029403601535432533),
+        StandardDev::from_standard_dev(2_f64.powf(-48.)), // 2^16 / 2^64
         0.0,
     );
     let lwe_noise_distribution = Gaussian::from_dispersion_parameter(
-        StandardDev(0.00000007069849454709433 * 0.000007069849454709433),
+        StandardDev::from_standard_dev(2_f64.powf(-20.)), // 2^44 / 2^64
         0.0,
     );
     let message_modulus = 1_u64 << 4;
@@ -165,9 +166,9 @@ fn main() {
     );
     let mut ks_ct = LweCiphertext::new(0u64, lwe_dimension.to_lwe_size(), ciphertext_modulus);
 
-    for (i,e) in raw_ct.blocks_mut().iter_mut().enumerate() {
+    for (i, e) in raw_ct.blocks_mut().iter_mut().enumerate() {
         let lwe_ciphertext_in: LweCiphertext<Vec<u64>> = e.ct.clone();
-        
+
         keyswitch_lwe_ciphertext(&ksk, &lwe_ciphertext_in, &mut ks_ct);
         let accumulator: GlweCiphertextOwned<u64> = generate_programmable_bootstrap_glwe_lut(
             polynomial_size,
@@ -175,7 +176,7 @@ fn main() {
             message_modulus as usize,
             ciphertext_modulus,
             delta,
-            |x: u64| x,
+            |x: u64| x % 4,
         );
 
         println!("Computing Santiti PBS for block {i} ...");
@@ -186,6 +187,12 @@ fn main() {
             &fourier_bsk,
         );
 
+        // programmable_bootstrap_f128_lwe_ciphertext(
+        //     &ks_ct,
+        //     &mut pbs_multiplication_ct,
+        //     &accumulator,
+        //     &fourier_bsk,
+        // );
 
         e.ct = pbs_multiplication_ct.clone();
     }
